@@ -26,6 +26,45 @@
     </div>
 
     <script>
+        class CanvasStroke{
+            constructor(color, points, lineSize, isMarker){
+                this.color = color
+                this.points = points
+                this.lineSize = lineSize
+                this.isMarker = isMarker
+            }
+            toJSONString(){ return JSON.stringify(this); }
+            isMarkerStroke(){ return this.isMarker; }
+            isEmpty(){ return this.points.length == 0; }
+            addPoint(pos){ this.points.push(pos); }
+            setColor(ctx){
+                // todo: maybe use color indexes
+                ctx.fillStyle = this.color
+            }
+            drawStroke(ctx){
+                this.setColor(ctx)
+
+                for(let i=1; i<this.points.length; i++){
+                    let a = this.points[i-1];
+                    let b = this.points[i];
+
+                    let dist = distanceBetween(a, b)
+                    let angle = angleBetween(a, b)
+                    for(let j=0; j<dist; j++){
+                        let x = a[0] + (Math.sin(angle) * j) - (this.lineSize/2)
+                        let y = a[1] + (Math.cos(angle) * j) - (this.lineSize/2)
+                        
+                        drawCircle(ctx, x, y, this.lineSize)
+                    }
+                }
+            }
+        }
+        function strokeFromJson(jsonData){
+            return new CanvasStroke( jsonData["color"], jsonData["points"], jsonData["lineSize"], jsonData["isMarker"] )
+        }
+    </script>
+    <script src="./network.js"></script>
+    <script>
         const settingsMenu = document.getElementById("rightClickMenu")
         const colorSelector = document.getElementById("colorSelection")
         const brushSizeSelector = document.getElementById("brushSize")
@@ -79,6 +118,7 @@
             if(currentStroke != null){
                 if(currentStroke.isEmpty() == false){
                     strokes.push( currentStroke )
+                    sendStrokeUpdate();
                 }
             }
 
@@ -117,8 +157,26 @@
 
         function getMarkerState(){ return isMarker }
         function getCurrentColor(){ return colorSelector.value }
-        function getBrushSize(){ return brushSizeSelector.value }
-        function undoStroke(){ strokes.pop() }
+        function getBrushSize(){ return parseInt(brushSizeSelector.value) }
+        function undoStroke(){ strokes.pop(); sendStrokeUpdate(); }
+
+        function sendStrokeUpdate(){
+            message = {
+                "purpose": "SendMyStrokes",
+                "strokes": strokes
+            }
+            sendWebsocketMessage(JSON.stringify(message))
+        }
+        function getAllStrokesCombined(){
+            let allStrokes = []
+            allStrokes.push(...strokes)
+            let keys = Object.keys(userStrokes)
+            for(let i=0; i<keys.length; i++){
+                let userS = userStrokes[keys[i]]
+                allStrokes.push( ...userS )
+            }
+            return allStrokes
+        }
 
         function pencilMarkerSwitch(button){
             isMarker = !isMarker
@@ -154,6 +212,7 @@
             clearCanvas(ctx, "#ffffff")
 
             // draw markers, then pencil. Marker is for color and goes under our line work
+            let strokes = getAllStrokesCombined()
             drawStrokesLayer(ctx, strokes, true)
             drawStrokesLayer(ctx, strokes, false)
 
@@ -161,40 +220,7 @@
             drawCircle(ctx, currentMousePos[0], currentMousePos[1], getBrushSize(), 0.2)
         }
 
-        class CanvasStroke{
-            constructor(color, points, lineSize, isMarker){
-                this.color = color
-                this.points = points
-                this.lineSize = lineSize
-                this.isMarker = isMarker
-            }
-            toJSONString(){ return JSON.stringify(this); }
-            isMarkerStroke(){ return this.isMarker; }
-            isEmpty(){ return this.points.length == 0; }
-            addPoint(pos){ this.points.push(pos); }
-            setColor(ctx){
-                // todo: maybe use color indexes
-                ctx.fillStyle = this.color
-            }
-            drawStroke(ctx){
-                this.setColor(ctx)
-
-                for(let i=1; i<this.points.length; i++){
-                    let a = this.points[i-1];
-                    let b = this.points[i];
-
-                    let dist = distanceBetween(a, b)
-                    let angle = angleBetween(a, b)
-                    for(let j=0; j<dist; j++){
-                        let x = a[0] + (Math.sin(angle) * j) - (this.lineSize/2)
-                        let y = a[1] + (Math.cos(angle) * j) - (this.lineSize/2)
-                        
-                        drawCircle(ctx, x, y, this.lineSize)
-                    }
-                }
-            }
-        }
-
+        
     </script>
 
 </body>
