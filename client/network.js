@@ -1,4 +1,5 @@
-const wsURI = "ws://127.0.0.1:8080"
+let wsURI = "ws://127.0.0.1:8080"
+wsURI = "EveryoneCanvasAPI.sabrina.hackclub.app"
 const websocket = new WebSocket(wsURI)
 
 let uuid = null
