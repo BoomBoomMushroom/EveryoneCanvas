@@ -1,5 +1,5 @@
 let wsURI = "ws://127.0.0.1:8080"
-wsURI = "ws://EveryoneCanvasAPI.sabrina.hackclub.app"
+wsURI = "wss://EveryoneCanvasAPI.sabrina.hackclub.app"
 const websocket = new WebSocket(wsURI)
 
 let uuid = null
