@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Allas Skriv</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+    <div class="keepTheCanvasInLine">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div id="rightClickMenu" class="noSelect hidden">
+        <h3>Settings</h3>
+        <div class="flexLineBreak"></div>
+        <input type="color" id="colorSelection" value="#000000">
+        <div class="flexLineBreak"></div>
+        <label for="brushSize">Brush Size (<span id="brushSizeLabel">8</span>): </label>
+        <input id="brushSize" type="range" min="1" max="16" value="8">
+        <div class="flexLineBreak"></div>
+        <button onclick="pencilMarkerSwitch(this)">Switch to marker (renders under pencil)</button>
+        <div class="flexLineBreak"></div>
+        <button onclick="undoStroke()">Undo Stroke</button>
+    </div>
+
+    <script>
+        const settingsMenu = document.getElementById("rightClickMenu")
+        const colorSelector = document.getElementById("colorSelection")
+        const brushSizeSelector = document.getElementById("brushSize")
+
+        const brushSizeSelectorLabelNum = document.getElementById("brushSizeLabel")
+
+        const canvas = document.getElementById("canvas")
+        canvas.width = 1920
+        canvas.height = 1080
+        const ctx = canvas.getContext("2d")
+
+        let isMarker = false
+        let currentStroke = null
+        let strokes = []
+
+        let currentMousePos = [-1000, -1000]
+
+        brushSizeSelector.addEventListener("input", ()=>{ brushSizeSelectorLabelNum.innerText = brushSizeSelector.value })
+
+        function closeSettingsMenu(){
+            settingsMenu.style.left = "-10000px"
+            settingsMenu.style.top = "-10000px"
+            settingsMenu.classList.add("hidden")
+        }
+
+        document.addEventListener("keydown", (e)=>{
+            if((e.metaKey || e.ctrlKey) && e.key == "z"){
+                // we did ctrl Z !! let's undo some strokes
+                undoStroke();
+            }
+        })
+        document.addEventListener("contextmenu", (e)=>{
+            let usedOnSettingsMenu = settingsMenu.contains(e.target)
+            if(usedOnSettingsMenu){return}
+
+            e.preventDefault()
+            
+            settingsMenu.classList.remove("hidden")
+            settingsMenu.style.left = (e.clientX - 10) + "px"
+            settingsMenu.style.top = (e.clientY - 10) + "px"
+        })
+        document.addEventListener("mousedown", (e)=>{
+            let usedOnSettingsMenu = settingsMenu.contains(e.target)
+            if(usedOnSettingsMenu == false){ closeSettingsMenu(); }
+            else{ return; }
+
+            if(e.button != 0){ return; } // if not left click then ignore it
+            currentStroke = new CanvasStroke(getCurrentColor(), [], getBrushSize(), getMarkerState())
+        })
+        document.addEventListener("mouseup", ()=>{
+            if(currentStroke != null){
+                if(currentStroke.isEmpty() == false){
+                    strokes.push( currentStroke )
+                }
+            }
+
+            currentStroke = null
+        })
+        document.addEventListener("mousemove", (e)=>{
+            // if we have the settings menu open then check if wer're outside of it, then close it
+            if( settingsMenu.classList.contains("hidden")==false ){
+                let bounding = settingsMenu.getBoundingClientRect()
+                
+                let tolerance = 30
+                let x = e.clientX
+                let y = e.clientY
+                let xInBounds = (x + tolerance) >= bounding.left && (x - tolerance) <= bounding.left+bounding.width
+                let yInBounds = (y + tolerance) >= bounding.top && (y - tolerance) <= bounding.top+bounding.height
+                if(xInBounds==false || yInBounds==false){ closeSettingsMenu() }
+            }
+
+            let bounding = canvas.getBoundingClientRect()
+            let x = Math.round( ((e.clientX - bounding.left) / bounding.width) * canvas.width )
+            let y = Math.round( ((e.clientY - bounding.top) / bounding.height) * canvas.height )
+
+            if(x < 0){ x = 0}
+            if(x > canvas.width){ x = canvas.width }
+            if(y < 0){ y = 0}
+            if(y > canvas.height){ y = canvas.height }
+
+            currentMousePos = [x,y]
+            if(currentStroke){ currentStroke.addPoint(currentMousePos) }
+            
+            // add the current stroke in temporarily so we can see it as we draw it
+            strokes.push(currentStroke)
+            redrawScreen(ctx)
+            strokes.pop(currentStroke)
+        })
+
+        function getMarkerState(){ return isMarker }
+        function getCurrentColor(){ return colorSelector.value }
+        function getBrushSize(){ return brushSizeSelector.value }
+        function undoStroke(){ strokes.pop() }
+
+        function pencilMarkerSwitch(button){
+            isMarker = !isMarker
+
+            if(button == null){ return }
+            let newText = isMarker ? "Switch to pencil (renders on top of marker)" : "Switch to marker (renders under pencil)"
+            button.innerText = newText
+        }
+
+        function distanceBetween (point1, point2) { return Math.sqrt(Math.pow(point2[0] - point1[0], 2) + Math.pow(point2[1] - point1[1], 2)) }
+        function angleBetween (point1, point2) { return Math.atan2(point2[0] - point1[0], point2[1] - point1[1]) }
+        function drawCircle(ctx, x, y, radius, opacity=1){
+            ctx.globalAlpha = opacity;
+            ctx.beginPath()
+            ctx.arc(x, y, radius, 0, 2*Math.PI);
+            ctx.fill()
+        }
+        function clearCanvas(ctx, clearColor){
+            ctx.fillStyle = clearColor
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+        }
+
+        function drawStrokesLayer(ctx, strokes, isMarkerLayer){
+            for(let i=0; i<strokes.length; i++){
+                let s = strokes[i]
+                if( s == null ){ continue; }
+                let markerLayer = s.isMarkerStroke()
+                if( (markerLayer && isMarkerLayer) || (!markerLayer && !isMarkerLayer)){ s.drawStroke(ctx) }
+            }
+        }
+        function redrawScreen(ctx){
+            ctx.globalAlpha = 1
+            clearCanvas(ctx, "#ffffff")
+
+            // draw markers, then pencil. Marker is for color and goes under our line work
+            drawStrokesLayer(ctx, strokes, true)
+            drawStrokesLayer(ctx, strokes, false)
+
+            ctx.fillStyle = getCurrentColor()
+            drawCircle(ctx, currentMousePos[0], currentMousePos[1], getBrushSize(), 0.2)
+        }
+
+        class CanvasStroke{
+            constructor(color, points, lineSize, isMarker){
+                this.color = color
+                this.points = points
+                this.lineSize = lineSize
+                this.isMarker = isMarker
+            }
+            toJSONString(){ return JSON.stringify(this); }
+            isMarkerStroke(){ return this.isMarker; }
+            isEmpty(){ return this.points.length == 0; }
+            addPoint(pos){ this.points.push(pos); }
+            setColor(ctx){
+                // todo: maybe use color indexes
+                ctx.fillStyle = this.color
+            }
+            drawStroke(ctx){
+                this.setColor(ctx)
+
+                for(let i=1; i<this.points.length; i++){
+                    let a = this.points[i-1];
+                    let b = this.points[i];
+
+                    let dist = distanceBetween(a, b)
+                    let angle = angleBetween(a, b)
+                    for(let j=0; j<dist; j++){
+                        let x = a[0] + (Math.sin(angle) * j) - (this.lineSize/2)
+                        let y = a[1] + (Math.cos(angle) * j) - (this.lineSize/2)
+                        
+                        drawCircle(ctx, x, y, this.lineSize)
+                    }
+                }
+            }
+        }
+
+    </script>
+
+</body>
+</html>
